@@ -1,4 +1,3 @@
-# app/app.py
 from app import create_app
 from datetime import datetime
 
@@ -15,21 +14,24 @@ def health_check():
                 'status': 'healthy', 
                 'service': 'Career Compass India API',
                 'database': 'connected',
-                'database_type': 'MongoDB'
+                'database_type': 'MongoDB',
+                'timestamp': datetime.utcnow().isoformat()
             }
         else:
             return {
                 'status': 'unhealthy', 
                 'service': 'Career Compass India API',
                 'database': 'disconnected',
-                'error': 'MongoDB not configured'
+                'error': 'MongoDB not configured',
+                'timestamp': datetime.utcnow().isoformat()
             }, 500
     except Exception as e:
         return {
             'status': 'unhealthy', 
             'service': 'Career Compass India API',
             'database': 'disconnected',
-            'error': str(e)
+            'error': str(e),
+            'timestamp': datetime.utcnow().isoformat()
         }, 500
 
 # Root endpoint
@@ -40,13 +42,15 @@ def root():
         'version': '1.0.0',
         'database': 'MongoDB',
         'status': 'operational',
+        'timestamp': datetime.utcnow().isoformat(),
         'endpoints': {
             'authentication': '/api/auth',
             'job_recommendations': '/api/jobs',
             'resume_services': '/api/resume',
             'chat_assistant': '/api/chat',
             'salary_insights': '/api/salary',
-            'health_check': '/health'
+            'health_check': '/health',
+            'database_test': '/api/auth/test-db'
         }
     }
 
@@ -84,4 +88,8 @@ if __name__ == '__main__':
                 print(f"⚠️  Database initialization warning: {e}")
     
     print("🚀 Career Compass India API starting on http://0.0.0.0:5000")
+    print("📊 Available endpoints:")
+    print("   - Health check: http://0.0.0.0:5000/health")
+    print("   - DB test: http://0.0.0.0:5000/api/auth/test-db")
+    print("   - API docs: http://0.0.0.0:5000/")
     app.run(debug=True, host='0.0.0.0', port=5000)

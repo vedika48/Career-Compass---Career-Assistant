@@ -1,60 +1,47 @@
-# app/__init__.py
 from flask import Flask
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
 from pymongo import MongoClient
-from bson import ObjectId
 import os
-import json
-from datetime import timedelta
+from datetime import datetime
 
-# Custom JSON encoder to handle ObjectId serialization
-class JSONEncoder(json.JSONEncoder):
-    def default(self, o):
-        if isinstance(o, ObjectId):
-            return str(o)
-        return json.JSONEncoder.default(self, o)
+def get_current_timestamp():
+    return datetime.utcnow()
 
 def create_app():
     app = Flask(__name__)
     
     # Configuration
-    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'career-compass-india-secret-key-2025')
-    app.config['MONGO_URI'] = os.environ.get('MONGO_URI', 'mongodb://localhost:27017/career_compass_india')
+    app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'your-secret-key-here')
+    app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'jwt-secret-key-here')
+    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = False  # Tokens don't expire for demo
     
-    # JWT Configuration
-    app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', 'jwt-secret-string')
-    app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(days=7)
+    # Initialize extensions
+    CORS(app, origins=["http://localhost:3000", "http://127.0.0.1:3000"])  # React dev server
+    jwt = JWTManager(app)
     
-    # Initialize MongoDB
+    # MongoDB configuration
+    app.config['MONGO_URI'] = os.environ.get('MONGO_URI', 'mongodb://localhost:27017/career_compass')
+    
     try:
-        mongo_client = MongoClient(app.config['MONGO_URI'])
-        app.db = mongo_client.get_database()
+        # Initialize MongoDB
+        app.mongo_client = MongoClient(app.config['MONGO_URI'])
+        app.db = app.mongo_client.get_database()
         print("✅ MongoDB connected successfully")
     except Exception as e:
         print(f"❌ MongoDB connection failed: {e}")
         app.db = None
     
-    # Initialize JWT
-    JWTManager(app)
-    
-    # Set custom JSON encoder
-    app.json_encoder = JSONEncoder
-    
-    # Enable CORS
-    CORS(app, origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001"])
+    # Add timestamp function to app context
+    app.get_current_timestamp = get_current_timestamp
     
     # Register blueprints
-    from app.routes.auth import bp as auth_bp
-    from app.routes.jobs import bp as jobs_bp
-    from app.routes.resume import bp as resume_bp
-    from app.routes.chat import bp as chat_bp
-    from app.routes.salary import bp as salary_bp
+    from app.routes import auth, jobs, resume, chat, salary
     
-    app.register_blueprint(auth_bp)
-    app.register_blueprint(jobs_bp)
-    app.register_blueprint(resume_bp)
-    app.register_blueprint(chat_bp)
-    app.register_blueprint(salary_bp)
+    app.register_blueprint(auth.bp)
+    app.register_blueprint(jobs.bp)
+    app.register_blueprint(resume.bp)
+    app.register_blueprint(chat.bp)
+    app.register_blueprint(salary.bp)
     
     return app

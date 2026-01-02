@@ -4,6 +4,8 @@ from datetime import datetime
 from app.ml_models.job_matcher import RealTimeJobMatcher
 from app.ml_models.resume_optimizer import ResumeOptimizer
 from app.ml_models.salary_predictor import SalaryPredictor, SalaryDataCollector, MarketAnalyzer
+from flask import current_app
+from bson import ObjectId
 
 class ChatService:
     def __init__(self):
@@ -15,506 +17,572 @@ class ChatService:
         self.market_analyzer = MarketAnalyzer(self.data_collector)
         self.salary_predictor = SalaryPredictor(self.data_collector, self.market_analyzer)
         
-        # Indian job market specific intents and responses
+        # Intent patterns for understanding user queries
         self.intent_patterns = {
             'job_search': [
-                r'find.*job', r'job.*search', r'looking.*job', r'job.*opening',
-                r'vacancy', r'position.*available', r'hiring', r'recruitment'
+                r'(?:find|search|look.*for).*job',
+                r'job.*(?:opportunities|openings|vacancies)',
+                r'(?:hiring|recruitment).*assistance',
+                r'career.*opportunities',
+                r'help.*get.*job',
+                r'applying.*jobs'
             ],
             'salary': [
-                r'salary', r'pay', r'compensation', r'wage', r'ctc', r'package',
-                r'negotiate.*salary', r'salary.*range', r'how much.*earn'
+                r'salary.*(?:range|expectation|negotiation)',
+                r'how.*much.*should.*earn',
+                r'compensation.*package',
+                r'pay.*scale',
+                r'ctc.*package',
+                r'negotiate.*offer'
             ],
             'resume': [
-                r'resume', r'cv', r'curriculum.*vitae', r'resume.*build',
-                r'resume.*improve', r'resume.*tip', r'ats.*score'
+                r'resume.*(?:help|review|build|improve)',
+                r'cv.*feedback',
+                r'ats.*friendly',
+                r'resume.*tips',
+                r'how.*write.*resume',
+                r'resume.*format'
             ],
             'interview': [
-                r'interview', r'interview.*prep', r'interview.*question',
-                r'technical.*round', r'hr.*round', r'coding.*interview'
+                r'interview.*(?:preparation|tips|questions)',
+                r'how.*prepare.*interview',
+                r'technical.*interview',
+                r'hr.*round',
+                r'behavioral.*questions',
+                r'company.*interview'
             ],
-            'company': [
-                r'company.*culture', r'work.*life.*balance', r'company.*review',
-                r'best.*company', r'woman.*friendly', r'maternity.*leave'
+            'company_research': [
+                r'company.*(?:culture|review|environment)',
+                r'work.*life.*balance',
+                r'best.*companies',
+                r'women.*friendly',
+                r'maternity.*policies',
+                r'work.*culture'
             ],
             'career_growth': [
-                r'career.*growth', r'promotion', r'skill.*development',
-                r'upskill', r'career.*change', r'switch.*company'
-            ],
-            'location': [
-                r'bangalore', r'mumbai', r'delhi', r'hyderabad', r'chennai',
-                r'pune', r'gurgaon', r'noida', r'remote.*work'
-            ]
-        }
-        
-        self.indian_context_responses = {
-            'job_search_tips': [
-                "For effective job search in India, focus on these platforms: Naukri.com, LinkedIn India, AngelList, Glassdoor India, and company career pages.",
-                "Update your LinkedIn profile with Indian keywords and location preferences. Many recruiters actively search LinkedIn for candidates.",
-                "Consider reaching out to alumni from your college who work in your target companies. The alumni network is very strong in India.",
-                "Apply through employee referrals when possible - many Indian companies have strong referral programs.",
-                "Don't forget about job fairs and campus placements if you're a recent graduate."
-            ],
-            'salary_negotiation_india': [
-                "In India, salary negotiation often includes base salary, variable pay, ESOPs (for startups), PF contribution, and benefits.",
-                "Research salary ranges on AmbitionBox, Glassdoor India, and PayScale for Indian market rates.",
-                "Consider the total CTC (Cost to Company) including benefits like health insurance, meals, transport allowance.",
-                "Startups might offer lower base salary but higher equity. Evaluate the company's growth potential.",
-                "Notice period in India is typically 1-3 months. Factor this into your negotiation timeline."
-            ],
-            'women_specific_advice': [
-                "Many Indian companies now have women-friendly policies. Ask about maternity leave (minimum 26 weeks in India), childcare support, and flexible working hours.",
-                "Look for companies with women leadership programs and diversity initiatives.",
-                "Consider joining women in tech groups like Women Who Code Delhi, PyLadies India, or company-specific women groups.",
-                "Some companies offer special benefits like cab services for late working hours and women safety programs.",
-                "Network with other women professionals through LinkedIn groups focused on Indian women in tech."
+                r'career.*(?:growth|development|advancement)',
+                r'skill.*development',
+                r'promotion.*opportunities',
+                r'upskill.*learn',
+                r'career.*change',
+                r'next.*career.*step'
             ]
         }
 
     def process_message(self, message, user_id=None, context=None):
-        """Process user message and generate appropriate response"""
-        message_lower = message.lower()
+        """Process user message and generate appropriate response using actual data"""
+        message_lower = message.lower().strip()
+        
+        # Detect intent from the entire sentence
         intent = self._detect_intent(message_lower)
+        
+        # Extract context from the full sentence
+        extracted_context = self._extract_context(message_lower)
         
         response_data = {
             'message': '',
             'intent': intent,
+            'context': extracted_context,
             'suggestions': [],
-            'action_required': None,
+            'data': {},
             'timestamp': datetime.utcnow().isoformat()
         }
         
-        if intent == 'job_search':
-            response_data['message'] = self._handle_job_search(message_lower, context)
-        elif intent == 'salary':
-            response_data['message'] = self._handle_salary_query(message_lower, context)
-        elif intent == 'resume':
-            response_data['message'] = self._handle_resume_query(message_lower, context)
-        elif intent == 'interview':
-            response_data['message'] = self._handle_interview_query(message_lower, context)
-        elif intent == 'company':
-            response_data['message'] = self._handle_company_query(message_lower, context)
-        elif intent == 'career_growth':
-            response_data['message'] = self._handle_career_growth_query(message_lower, context)
-        else:
-            response_data['message'] = self._handle_general_query(message_lower, context)
+        try:
+            # Generate response based on intent using real data
+            if intent == 'job_search':
+                response_data.update(self._handle_job_search(message_lower, extracted_context, user_id))
+            elif intent == 'salary':
+                response_data.update(self._handle_salary_query(message_lower, extracted_context, user_id))
+            elif intent == 'resume':
+                response_data.update(self._handle_resume_query(message_lower, extracted_context, user_id))
+            elif intent == 'interview':
+                response_data.update(self._handle_interview_query(message_lower, extracted_context, user_id))
+            elif intent == 'company_research':
+                response_data.update(self._handle_company_query(message_lower, extracted_context, user_id))
+            elif intent == 'career_growth':
+                response_data.update(self._handle_career_growth_query(message_lower, extracted_context, user_id))
+            else:
+                response_data.update(self._handle_general_query(message_lower, extracted_context, user_id))
+                
+            response_data['suggestions'] = self.get_follow_up_suggestions(intent, extracted_context)
             
-        response_data['suggestions'] = self.get_follow_up_suggestions(message)
-        
+        except Exception as e:
+            current_app.logger.error(f"Error processing message: {str(e)}")
+            response_data['message'] = f"I encountered an error while processing your request: {str(e)}"
+            response_data['error'] = str(e)
+            
         return response_data
 
     def _detect_intent(self, message):
-        """Detect user intent from message"""
+        """Detect user intent from the entire message"""
         for intent, patterns in self.intent_patterns.items():
             for pattern in patterns:
-                if re.search(pattern, message):
+                if re.search(pattern, message, re.IGNORECASE):
                     return intent
         return 'general'
 
-    def _handle_job_search(self, message, context):
-        """Handle job search related queries"""
-        location = self._extract_location(message)
-        role = self._extract_role(message)
-        
-        response = "I can help you find job opportunities! "
-        
-        if location:
-            response += f"For {location}, here are some tips:\n\n"
-            if location in ['bangalore', 'bengaluru']:
-                response += "Bangalore is India's Silicon Valley with opportunities in startups, product companies, and R&D centers of global firms."
-            elif location in ['mumbai']:
-                response += "Mumbai offers fintech, media, and corporate opportunities along with many multinational headquarters."
-            elif location in ['delhi', 'gurgaon', 'noida']:
-                response += "Delhi NCR has a mix of startups, consulting firms, and government tech initiatives."
-            elif location in ['hyderabad']:
-                response += "Hyderabad is strong in biotech, pharma IT, and has many global development centers."
-            elif location in ['pune']:
-                response += "Pune offers automotive tech, IT services, and has a growing startup ecosystem."
-                
-        response += "\n\nFor an effective job search in India, I recommend:\n"
-        response += "1. Update your Naukri.com and LinkedIn profiles\n"
-        response += "2. Set up job alerts for your target roles\n"
-        response += "3. Leverage your college alumni network\n"
-        response += "4. Consider employee referrals - they're very effective in India\n"
-        response += "5. Research company culture and women-friendly policies\n\n"
-        response += "Would you like me to suggest some companies or specific job openings based on your profile?"
-        
-        return response
-
-    def _handle_salary_query(self, message, context):
-        """Handle salary and compensation queries"""
-        response = "Salary negotiation in India involves several components beyond just base salary:\n\n"
-        response += "**Salary Components in India:**\n"
-        response += "• Base Salary (60-70% of CTC)\n"
-        response += "• Variable Pay/Bonus (10-20%)\n"
-        response += "• Employee Provident Fund (EPF)\n"
-        response += "• Health Insurance\n"
-        response += "• ESOPs (Employee Stock Options) for startups\n"
-        response += "• Other benefits: Meal vouchers, Transport allowance, etc.\n\n"
-        
-        response += "**Negotiation Tips for Indian Market:**\n"
-        response += "1. Research on AmbitionBox, Glassdoor India for market rates\n"
-        response += "2. Consider the total package, not just base salary\n"
-        response += "3. Evaluate startup equity potential vs. established company stability\n"
-        response += "4. Factor in notice period (usually 1-3 months in India)\n"
-        response += "5. Ask about annual appraisal cycles and promotion timelines\n\n"
-        
-        response += "**For Women Specifically:**\n"
-        response += "• Ensure 26+ weeks maternity leave (legal minimum in India)\n"
-        response += "• Ask about return-to-work programs\n"
-        response += "• Inquire about flexible working arrangements\n"
-        response += "• Check for women safety programs and late-night transportation\n\n"
-        
-        response += "Would you like me to help you research salary ranges for a specific role and location?"
-        
-        return response
-
-    def _handle_resume_query(self, message, context):
-        """Handle resume building and optimization queries"""
-        response = "Creating an effective resume for the Indian job market:\n\n"
-        response += "**ATS-Friendly Format:**\n"
-        response += "• Use standard fonts (Arial, Calibri) and simple formatting\n"
-        response += "• Include keywords from job descriptions\n"
-        response += "• Keep it 1-2 pages maximum\n"
-        response += "• Save as both PDF and Word formats\n\n"
-        
-        response += "**Indian Resume Specifics:**\n"
-        response += "• Include your photo (common in India, unlike Western countries)\n"
-        response += "• Mention your current CTC and expected CTC\n"
-        response += "• Include notice period information\n"
-        response += "• Add relevant certifications (especially for tech roles)\n"
-        response += "• Mention college CGPA if you're a recent graduate\n\n"
-        
-        response += "**Key Sections:**\n"
-        response += "1. Professional Summary (2-3 lines)\n"
-        response += "2. Technical Skills (very important for tech roles)\n"
-        response += "3. Work Experience (with quantified achievements)\n"
-        response += "4. Education (include percentage/CGPA)\n"
-        response += "5. Projects (especially for software roles)\n"
-        response += "6. Certifications and Awards\n\n"
-        
-        response += "**Common Mistakes to Avoid:**\n"
-        response += "• Generic objectives instead of specific value propositions\n"
-        response += "• Listing duties instead of achievements\n"
-        response += "• Not tailoring resume for each application\n"
-        response += "• Ignoring ATS optimization\n\n"
-        
-        response += "Would you like me to review your resume or help you build one from scratch?"
-        
-        return response
-
-    def _handle_interview_query(self, message, context):
-        """Handle interview preparation queries"""
-        response = "Interview preparation for Indian companies:\n\n"
-        response += "**Technical Interview Rounds:**\n"
-        response += "• Coding problems (data structures, algorithms)\n"
-        response += "• System design (for senior roles)\n"
-        response += "• Technology deep-dive questions\n"
-        response += "• Live coding sessions\n\n"
-        
-        response += "**HR/Behavioral Round:**\n"
-        response += "• Why do you want to join our company?\n"
-        response += "• Where do you see yourself in 5 years?\n"
-        response += "• How do you handle work pressure?\n"
-        response += "• Questions about notice period and salary expectations\n"
-        response += "• Cultural fit assessment\n\n"
-        
-        response += "**Indian Company Culture Questions:**\n"
-        response += "• Ability to work in diverse, multi-cultural teams\n"
-        response += "• Flexibility with working hours (considering global clients)\n"
-        response += "• Comfort with hierarchical structures\n"
-        response += "• Experience with client interaction (for service companies)\n\n"
-        
-        response += "**Questions to Ask Them:**\n"
-        response += "• Team structure and reporting hierarchy\n"
-        response += "• Growth opportunities and career path\n"
-        response += "• Learning and development programs\n"
-        response += "• Work-life balance initiatives\n"
-        response += "• Women-friendly policies (if relevant)\n\n"
-        
-        response += "**Specific Tips for Women:**\n"
-        response += "• Research the company's diversity statistics\n"
-        response += "• Ask about women leadership programs\n"
-        response += "• Inquire about maternity policies and support\n"
-        response += "• Check for women employee resource groups\n\n"
-        
-        response += "Would you like specific interview tips for any particular company or role?"
-        
-        return response
-
-    def _handle_company_query(self, message, context):
-        """Handle company culture and work environment queries"""
-        response = "Here are some companies in India known for supporting women and maintaining good work culture:\n\n"
-        response += "**Tech Product Companies:**\n"
-        response += "• Flipkart: Strong maternity benefits, flexible working\n"
-        response += "• Swiggy: Extended parental leave, return-to-work programs\n"
-        response += "• Zomato: Gender neutral policies, menstrual leave\n"
-        response += "• Paytm: Equal pay initiatives, women leadership programs\n"
-        response += "• Razorpay: Flexible hours, comprehensive health coverage\n\n"
-        
-        response += "**Global Tech Companies (Indian Offices):**\n"
-        response += "• Google India: Excellent work-life balance, diversity programs\n"
-        response += "• Microsoft India: Strong inclusion initiatives\n"
-        response += "• Amazon India: Comprehensive benefits, career development\n"
-        response += "• Adobe India: Creative work environment, flexible policies\n\n"
-        
-        response += "**What to Look for in Women-Friendly Companies:**\n"
-        response += "• 26+ weeks maternity leave (legal minimum)\n"
-        response += "• Childcare support or daycare facilities\n"
-        response += "• Flexible working hours and remote work options\n"
-        response += "• Women safety programs (cab services, security)\n"
-        response += "• Equal pay and promotion opportunities\n"
-        response += "• Women leadership representation\n"
-        response += "• Anti-harassment policies and committees\n\n"
-        
-        response += "**Red Flags to Avoid:**\n"
-        response += "• Unclear or discriminatory hiring practices\n"
-        response += "• No women in leadership positions\n"
-        response += "• Poor reviews on platforms like Glassdoor India\n"
-        response += "• Excessive working hours without compensation\n"
-        response += "• No clear career progression path\n\n"
-        
-        response += "Would you like me to provide more details about any specific company or help you research a particular organization?"
-        
-        return response
-
-    def _handle_career_growth_query(self, message, context):
-        """Handle career development and growth queries"""
-        response = "Career growth strategies for women in the Indian tech industry:\n\n"
-        response += "**Skill Development:**\n"
-        response += "• Stay updated with latest technologies and frameworks\n"
-        response += "• Pursue relevant certifications (AWS, Google Cloud, etc.)\n"
-        response += "• Contribute to open source projects\n"
-        response += "• Build a strong portfolio showcasing your work\n\n"
-        
-        response += "**Networking in India:**\n"
-        response += "• Join women in tech groups (Women Who Code, PyLadies India)\n"
-        response += "• Attend meetups and conferences in your city\n"
-        response += "• Leverage college alumni networks\n"
-        response += "• Participate in company-sponsored tech talks and events\n"
-        response += "• Engage actively on LinkedIn with industry content\n\n"
-        
-        response += "**Career Progression Paths:**\n"
-        response += "• Individual Contributor → Senior IC → Staff/Principal Engineer\n"
-        response += "• IC → Team Lead → Engineering Manager → Director\n"
-        response += "• Technical → Product Management → Product Leadership\n"
-        response += "• Corporate → Startup → Entrepreneurship\n\n"
-        
-        response += "**Switching Companies Strategically:**\n"
-        response += "• Service company → Product company for better learning\n"
-        response += "• Large corporate → Startup for more responsibility\n"
-        response += "• Indian company → Global company for exposure\n"
-        response += "• Aim for 20-40% salary increase with each switch\n\n"
-        
-        response += "**Building Personal Brand:**\n"
-        response += "• Write technical blogs and articles\n"
-        response += "• Speak at conferences and meetups\n"
-        response += "• Mentor junior developers\n"
-        response += "• Participate in hackathons and coding competitions\n\n"
-        
-        response += "**Overcoming Challenges as a Woman:**\n"
-        response += "• Build confidence through continuous learning\n"
-        response += "• Find mentors and sponsors within your organization\n"
-        response += "• Don't hesitate to negotiate and advocate for yourself\n"
-        response += "• Join women support groups for guidance and networking\n\n"
-        
-        response += "What specific aspect of career growth would you like to discuss further?"
-        
-        return response
-
-    def _handle_general_query(self, message, context):
-        """Handle general queries"""
-        response = "I'm here to help you navigate your career journey in India! I can assist with:\n\n"
-        response += "🔍 **Job Search**: Finding opportunities, company research, application strategies\n"
-        response += "💰 **Salary & Negotiation**: Market rates, compensation analysis, negotiation tips\n"
-        response += "📄 **Resume Building**: ATS optimization, Indian market specifics, review and feedback\n"
-        response += "🎯 **Interview Prep**: Technical rounds, HR questions, company-specific guidance\n"
-        response += "🏢 **Company Culture**: Women-friendly workplaces, benefits analysis\n"
-        response += "📈 **Career Growth**: Skill development, networking, career transitions\n\n"
-        
-        response += "**Popular topics for women in Indian tech:**\n"
-        response += "• Best cities for tech careers (Bangalore, Mumbai, Hyderabad)\n"
-        response += "• Maternity and childcare policies\n"
-        response += "• Work-life balance in different companies\n"
-        response += "• Breaking into product management or leadership roles\n"
-        response += "• Transitioning from service companies to product companies\n\n"
-        
-        response += "What would you like to know more about? Feel free to ask specific questions!"
-        
-        return response
+    def _extract_context(self, message):
+        """Extract context from the entire sentence"""
+        return {
+            'location': self._extract_location(message),
+            'role': self._extract_role(message),
+            'experience': self._extract_experience(message),
+            'skills': self._extract_skills(message),
+            'company': self._extract_company(message)
+        }
 
     def _extract_location(self, message):
-        """Extract location from message"""
-        locations = {
-            'bangalore': ['bangalore', 'bengaluru', 'blr'],
-            'mumbai': ['mumbai', 'bombay'],
-            'delhi': ['delhi', 'new delhi', 'ncr', 'gurgaon', 'gurugram', 'noida'],
-            'hyderabad': ['hyderabad', 'hyd'],
-            'chennai': ['chennai', 'madras'],
-            'pune': ['pune'],
-            'kolkata': ['kolkata', 'calcutta'],
-            'ahmedabad': ['ahmedabad'],
-            'kochi': ['kochi', 'cochin']
-        }
-        
-        for city, variations in locations.items():
-            for variation in variations:
-                if variation in message:
-                    return city
+        """Extract location from message by querying database"""
+        try:
+            db = current_app.db
+            if db:
+                locations = db.jobs.distinct('location')
+                for location in locations:
+                    if location and location.lower() in message.lower():
+                        return location
+        except Exception as e:
+            current_app.logger.error(f"Error extracting location: {str(e)}")
         return None
 
     def _extract_role(self, message):
-        """Extract job role from message"""
-        roles = [
-            'software engineer', 'developer', 'programmer', 'sde',
-            'data scientist', 'data analyst', 'ml engineer',
-            'product manager', 'pm', 'product owner',
-            'designer', 'ui designer', 'ux designer',
-            'devops', 'sre', 'system admin',
-            'qa', 'tester', 'quality assurance',
-            'tech lead', 'engineering manager',
-            'consultant', 'business analyst'
-        ]
-        
-        for role in roles:
-            if role in message:
-                return role
+        """Extract job role from message by querying database"""
+        try:
+            db = current_app.db
+            if db:
+                roles = db.jobs.distinct('title')
+                for role in roles:
+                    if role and role.lower() in message.lower():
+                        return role
+        except Exception as e:
+            current_app.logger.error(f"Error extracting role: {str(e)}")
         return None
 
-    def get_follow_up_suggestions(self, message):
-        """Generate follow-up suggestions based on user message"""
-        message_lower = message.lower()
+    def _extract_experience(self, message):
+        """Extract experience from message"""
+        exp_patterns = {
+            'fresher': r'\b(?:fresher|recent graduate|0|no experience|entry level)\b',
+            '0-2 years': r'\b(?:0-2|1-2|2 years?|junior)\b',
+            '2-5 years': r'\b(?:2-5|3-5|mid level|mid-level)\b',
+            '5+ years': r'\b(?:5\+|5-8|8\+|senior|lead|principal)\b'
+        }
         
-        if 'job' in message_lower:
-            return [
-                "Show me companies with good work-life balance",
-                "What's the average salary for my role?",
-                "Help me optimize my resume for ATS",
-                "Interview tips for Indian tech companies"
-            ]
-        elif 'salary' in message_lower:
-            return [
-                "How to negotiate salary in India?",
-                "Compare salaries across different cities",
-                "What benefits should I ask for?",
-                "Salary trends in my industry"
-            ]
-        elif 'resume' in message_lower:
-            return [
-                "Review my resume for ATS compatibility",
-                "Show me resume templates",
-                "How to highlight achievements?",
-                "Keywords for my industry"
-            ]
-        elif 'interview' in message_lower:
-            return [
-                "Common technical interview questions",
-                "How to research a company before interview?",
-                "Behavioral interview preparation",
-                "Questions to ask the interviewer"
-            ]
-        else:
-            return [
-                "Find software engineer jobs in Bangalore",
-                "How to prepare for technical interviews?",
-                "Companies with good maternity policies",
-                "Career growth tips for women in tech"
-            ]
+        for exp_level, pattern in exp_patterns.items():
+            if re.search(pattern, message, re.IGNORECASE):
+                return exp_level
+        return None
 
-    def get_location_comparison(self, role, experience):
-        """Compare salaries across different Indian cities"""
-        locations = ['bangalore', 'mumbai', 'delhi', 'hyderabad', 'chennai', 'pune']
-        comparison = {}
-        
-        for location in locations:
-            data = self.get_market_data(role, location, experience)
-            comparison[location] = {
-                'median_salary': data['salary_range']['median'],
-                'cost_of_living_index': self._get_cost_of_living_index(location),
-                'adjusted_salary': self._adjust_for_cost_of_living(
-                    data['salary_range']['median'], 
-                    location
+    def _extract_skills(self, message):
+        """Extract skills from message by querying database"""
+        try:
+            db = current_app.db
+            if db:
+                skills = db.jobs.distinct('skills')
+                found_skills = []
+                for skill in skills:
+                    if skill and skill.lower() in message.lower():
+                        found_skills.append(skill)
+                return found_skills if found_skills else None
+        except Exception as e:
+            current_app.logger.error(f"Error extracting skills: {str(e)}")
+        return None
+
+    def _extract_company(self, message):
+        """Extract company name from message by querying database"""
+        try:
+            db = current_app.db
+            if db:
+                companies = db.jobs.distinct('company')
+                for company in companies:
+                    if company and company.lower() in message.lower():
+                        return company
+        except Exception as e:
+            current_app.logger.error(f"Error extracting company: {str(e)}")
+        return None
+
+    def _handle_job_search(self, message, context, user_id):
+        """Handle job search using RealTimeJobMatcher"""
+        try:
+            # Get user profile to personalize recommendations
+            user_profile = self._get_user_profile(user_id)
+            
+            # Use the job matcher to find relevant jobs
+            if user_profile:
+                recommendations = self.job_matcher.get_recommendations(
+                    user_profile.get('skills', []),
+                    user_profile.get('preferred_locations', []),
+                    user_profile.get('experience', 0)
                 )
+            else:
+                # Fallback to context-based search
+                recommendations = self.job_matcher.search_jobs(
+                    skills=context.get('skills', []),
+                    location=context.get('location'),
+                    role=context.get('role')
+                )
+            
+            if recommendations and len(list(recommendations.clone())) > 0:
+                jobs_list = list(recommendations.limit(5))
+                
+                response = f"I found {len(jobs_list)} relevant job opportunities"
+                if context.get('role'):
+                    response += f" for {context['role']} roles"
+                if context.get('location'):
+                    response += f" in {context['location']}"
+                response += ":\n\n"
+                
+                for i, job in enumerate(jobs_list, 1):
+                    response += f"{i}. **{job.get('title', 'N/A')}** at {job.get('company', 'N/A')}\n"
+                    response += f"   Location: {job.get('location', 'N/A')}\n"
+                    response += f"   Experience: {job.get('experience', 'N/A')}\n"
+                    response += f"   Skills: {', '.join(job.get('skills', []))}\n\n"
+                
+                response += "Would you like me to provide more details about any of these positions or help you with the application process?"
+                
+                return {
+                    'message': response,
+                    'data': {
+                        'jobs': jobs_list,
+                        'total_count': len(jobs_list)
+                    }
+                }
+            else:
+                return {
+                    'message': "I couldn't find specific job matches based on your query. Let me help you refine your search. Could you tell me more about your skills, preferred location, or target roles?",
+                    'data': {'jobs': []}
+                }
+                
+        except Exception as e:
+            current_app.logger.error(f"Job search error: {str(e)}")
+            return {
+                'message': f"I'm having trouble accessing job data right now. Error: {str(e)}",
+                'error': str(e)
             }
-        
-        return comparison
 
-    def get_growth_trends(self, role, location):
-        """Get salary growth trends (simulated data)"""
+    def _handle_salary_query(self, message, context, user_id):
+        """Handle salary queries using SalaryPredictor"""
+        try:
+            # Use the salary predictor to get actual data
+            if context.get('role') and context.get('location'):
+                prediction = self.salary_predictor.predict(
+                    role=context['role'],
+                    location=context['location'],
+                    experience=self._experience_to_years(context.get('experience'))
+                )
+                
+                if prediction:
+                    response = f"Based on current market data for {context['role']} in {context['location']}:\n\n"
+                    response += f"**Estimated Salary Range:** ₹{prediction.get('min_salary', 'N/A')} - ₹{prediction.get('max_salary', 'N/A')} per year\n"
+                    response += f"**Median Salary:** ₹{prediction.get('median_salary', 'N/A')} per year\n"
+                    response += f"**Experience Level:** {context.get('experience', 'Not specified')}\n\n"
+                    
+                    # Add market insights
+                    insights = self.market_analyzer.get_market_insights(
+                        context['role'], 
+                        context['location']
+                    )
+                    if insights:
+                        response += "**Market Insights:**\n"
+                        for insight in insights.get('trends', [])[:3]:
+                            response += f"• {insight}\n"
+                    
+                    return {
+                        'message': response,
+                        'data': {
+                            'salary_prediction': prediction,
+                            'market_insights': insights
+                        }
+                    }
+            
+            # Fallback if not enough context
+            return {
+                'message': "To provide accurate salary information, I need to know the role and location you're interested in. Could you specify what position and city you're asking about?",
+                'data': {}
+            }
+            
+        except Exception as e:
+            current_app.logger.error(f"Salary query error: {str(e)}")
+            return {
+                'message': f"I'm having trouble accessing salary data right now. Error: {str(e)}",
+                'error': str(e)
+            }
+
+    def _handle_resume_query(self, message, context, user_id):
+        """Handle resume queries using ResumeOptimizer"""
+        try:
+            # Get user's resume data if available
+            user_profile = self._get_user_profile(user_id)
+            
+            if 'review' in message or 'feedback' in message:
+                if user_profile and user_profile.get('resume_text'):
+                    # Use resume optimizer for actual analysis
+                    analysis = self.resume_optimizer.analyze_resume(user_profile['resume_text'])
+                    response = f"Based on your resume analysis:\n\n"
+                    response += f"**ATS Score:** {analysis.get('ats_score', 'N/A')}/100\n"
+                    response += f"**Key Strengths:** {', '.join(analysis.get('strengths', []))}\n"
+                    response += f"**Areas for Improvement:** {', '.join(analysis.get('improvements', []))}\n\n"
+                    response += "Would you like specific suggestions for improvement?"
+                else:
+                    response = "I can help you review and optimize your resume! Please upload your resume or share your key details like skills, experience, and target roles for personalized feedback."
+                
+                return {
+                    'message': response,
+                    'data': {
+                        'can_analyze': user_profile and user_profile.get('resume_text') is not None
+                    }
+                }
+            else:
+                return {
+                    'message': "I can help you with resume building, ATS optimization, and personalized feedback. Would you like me to review your existing resume or help you create a new one?",
+                    'data': {}
+                }
+                
+        except Exception as e:
+            current_app.logger.error(f"Resume query error: {str(e)}")
+            return {
+                'message': f"I'm having trouble accessing resume analysis tools right now. Error: {str(e)}",
+                'error': str(e)
+            }
+
+    def _handle_interview_query(self, message, context, user_id):
+        """Handle interview preparation queries using actual data"""
+        try:
+            db = current_app.db
+            if not db:
+                raise Exception("Database not available")
+                
+            company = context.get('company')
+            role = context.get('role')
+            
+            # Query interview questions from database
+            query = {}
+            if company:
+                query['company'] = {'$regex': company, '$options': 'i'}
+            if role:
+                query['role'] = {'$regex': role, '$options': 'i'}
+            
+            questions = list(db.interview_questions.find(query).limit(10))
+            
+            if questions:
+                response = f"Here are some interview questions"
+                if company:
+                    response += f" for {company}"
+                if role:
+                    response += f" for {role} roles"
+                response += ":\n\n"
+                
+                for i, q in enumerate(questions, 1):
+                    response += f"{i}. {q.get('question', 'N/A')}\n"
+                    if q.get('type'):
+                        response += f"   Type: {q['type']}\n"
+                    response += "\n"
+                
+                return {
+                    'message': response,
+                    'data': {
+                        'questions': questions,
+                        'total_questions': len(questions)
+                    }
+                }
+            else:
+                return {
+                    'message': "I can help you with interview preparation! Could you specify the company or role you're preparing for? I can provide technical questions, behavioral questions, and company-specific tips.",
+                    'data': {}
+                }
+                
+        except Exception as e:
+            current_app.logger.error(f"Interview query error: {str(e)}")
+            return {
+                'message': f"I can provide general interview preparation tips. For technical roles, focus on data structures and algorithms. For behavioral interviews, prepare STAR method examples. Database error: {str(e)}",
+                'error': str(e)
+            }
+
+    def _handle_company_query(self, message, context, user_id):
+        """Handle company research queries using actual data"""
+        try:
+            db = current_app.db
+            if not db:
+                raise Exception("Database not available")
+                
+            company = context.get('company')
+            
+            if company:
+                # Query company data from database
+                company_data = db.companies.find_one({
+                    'name': {'$regex': company, '$options': 'i'}
+                })
+                
+                if company_data:
+                    response = f"Here's what I found about {company_data.get('name', company)}:\n\n"
+                    response += f"**Industry:** {company_data.get('industry', 'N/A')}\n"
+                    response += f"**Size:** {company_data.get('size', 'N/A')} employees\n"
+                    response += f"**Location:** {company_data.get('headquarters', 'N/A')}\n\n"
+                    
+                    if company_data.get('culture'):
+                        response += "**Company Culture:**\n"
+                        for aspect in company_data['culture'][:3]:
+                            response += f"• {aspect}\n"
+                    
+                    if company_data.get('benefits'):
+                        response += "\n**Key Benefits:**\n"
+                        for benefit in company_data['benefits'][:3]:
+                            response += f"• {benefit}\n"
+                    
+                    return {
+                        'message': response,
+                        'data': {
+                            'company': company_data
+                        }
+                    }
+            
+            return {
+                'message': "I can help you research companies! Please specify which company you're interested in, and I'll provide information about their culture, benefits, work environment, and reviews.",
+                'data': {}
+            }
+            
+        except Exception as e:
+            current_app.logger.error(f"Company query error: {str(e)}")
+            return {
+                'message': f"I'm having trouble accessing company data right now. Error: {str(e)}",
+                'error': str(e)
+            }
+
+    def _handle_career_growth_query(self, message, context, user_id):
+        """Handle career growth queries using personalized recommendations"""
+        try:
+            user_profile = self._get_user_profile(user_id)
+            current_role = context.get('role') or (user_profile.get('current_role') if user_profile else None)
+            
+            if current_role:
+                # Query career paths from database
+                db = current_app.db
+                if db:
+                    career_path = db.career_paths.find_one({
+                        'current_role': {'$regex': current_role, '$options': 'i'}
+                    })
+                    
+                    if career_path:
+                        response = f"Based on your current role as {current_role}, here are potential career growth paths:\n\n"
+                        
+                        response += "**Next Steps:**\n"
+                        for step in career_path.get('next_roles', [])[:3]:
+                            response += f"• {step}\n"
+                        
+                        response += "\n**Recommended Skills to Learn:**\n"
+                        for skill in career_path.get('skills_to_learn', [])[:5]:
+                            response += f"• {skill}\n"
+                        
+                        if career_path.get('timeline'):
+                            response += f"\n**Typical Timeline:** {career_path['timeline']}\n"
+                        
+                        return {
+                            'message': response,
+                            'data': {
+                                'career_path': career_path
+                            }
+                        }
+            
+            return {
+                'message': "I can help you plan your career growth! Could you tell me your current role and what kind of career direction you're interested in? I can suggest skills to learn, potential career paths, and growth opportunities.",
+                'data': {}
+            }
+            
+        except Exception as e:
+            current_app.logger.error(f"Career growth query error: {str(e)}")
+            return {
+                'message': f"For career growth, focus on continuous learning, networking, and taking on challenging projects. Database error: {str(e)}",
+                'error': str(e)
+            }
+
+    def _handle_general_query(self, message, context, user_id):
+        """Handle general queries"""
         return {
-            'yoy_growth': 12.5,  # Year over year growth percentage
-            'five_year_projection': {
-                '2025': 1500000,
-                '2026': 1650000,
-                '2027': 1815000,
-                '2028': 1995000,
-                '2029': 2195000
-            },
-            'market_trends': [
-                "Remote work increasing salary standardization across tier-1 cities",
-                "AI/ML roles seeing 15-20% higher growth than traditional software roles",
-                "Product companies offering 20-30% premium over service companies",
-                "Equity compensation becoming standard in startups"
+            'message': "I'm here to help you with your career journey in India! I can assist with:\n\n"
+                      "• **Job Search**: Finding opportunities, company research, application strategies\n"
+                      "• **Salary Insights**: Market rates, compensation analysis, negotiation tips\n"
+                      "• **Resume Help**: ATS optimization, review, and building guidance\n"
+                      "• **Interview Prep**: Technical and behavioral question practice\n"
+                      "• **Company Research**: Culture, benefits, work environment insights\n"
+                      "• **Career Growth**: Skill development, career path planning\n\n"
+                      "What specific area would you like help with today?",
+            'data': {}
+        }
+
+    def _get_user_profile(self, user_id):
+        """Get user profile from database"""
+        if not user_id:
+            return None
+            
+        try:
+            db = current_app.db
+            if db:
+                user = db.users.find_one({'_id': ObjectId(user_id)})
+                return user
+        except Exception as e:
+            current_app.logger.error(f"Error getting user profile: {str(e)}")
+        return None
+
+    def _experience_to_years(self, experience_str):
+        """Convert experience string to years"""
+        if not experience_str:
+            return 0
+            
+        if 'fresher' in experience_str.lower():
+            return 0
+        elif '0-2' in experience_str:
+            return 1
+        elif '2-5' in experience_str:
+            return 3
+        elif '5+' in experience_str:
+            return 6
+        else:
+            return 0
+
+    def get_follow_up_suggestions(self, intent, context):
+        """Generate context-aware follow-up suggestions"""
+        base_suggestions = {
+            'job_search': [
+                "Show me remote job opportunities",
+                "Find jobs with specific skills",
+                "Help me prepare for applications",
+                "Compare companies"
+            ],
+            'salary': [
+                "Compare salaries across cities",
+                "Negotiation strategies",
+                "Benefits to ask for",
+                "Industry salary trends"
+            ],
+            'resume': [
+                "Review my resume",
+                "ATS optimization tips",
+                "Resume templates",
+                "Key achievements examples"
+            ],
+            'interview': [
+                "Technical interview practice",
+                "Behavioral questions",
+                "Company-specific tips",
+                "Interview follow-up"
+            ],
+            'company_research': [
+                "Company culture details",
+                "Employee benefits",
+                "Growth opportunities",
+                "Work-life balance"
+            ],
+            'career_growth': [
+                "Skill development plan",
+                "Certification recommendations",
+                "Networking strategies",
+                "Career transition advice"
+            ],
+            'general': [
+                "Find software engineer jobs",
+                "Salary negotiation tips",
+                "Resume building help",
+                "Interview preparation"
             ]
         }
-
-    def _get_experience_range(self, experience_years):
-        """Convert experience years to range categories"""
-        if experience_years <= 2:
-            return '0-2'
-        elif experience_years <= 5:
-            return '2-5'
-        elif experience_years <= 8:
-            return '5-8'
-        else:
-            return '8+'
-
-    def _get_cost_of_living_index(self, location):
-        """Get cost of living index for Indian cities (Bangalore = 100)"""
-        col_index = {
-            'bangalore': 100,
-            'mumbai': 120,
-            'delhi': 110,
-            'hyderabad': 85,
-            'chennai': 90,
-            'pune': 95,
-            'kolkata': 80,
-            'ahmedabad': 75
-        }
-        return col_index.get(location.lower(), 100)
-
-    def _adjust_for_cost_of_living(self, salary, location):
-        """Adjust salary for cost of living"""
-        col_index = self._get_cost_of_living_index(location)
-        return int(salary * (100 / col_index))
-
-    def _get_market_position(self, median_salary, multiplier):
-        """Determine market position based on salary"""
-        adjusted_median = median_salary * multiplier
-        if adjusted_median > 3000000:
-            return "Premium"
-        elif adjusted_median > 1500000:
-            return "Above Market"
-        elif adjusted_median > 800000:
-            return "Market Rate"
-        else:
-            return "Below Market"
-
-    def _get_default_market_data(self):
-        """Return default market data when specific data is not available"""
-        return {
-            'role': 'Software Engineer',
-            'location': 'Bangalore',
-            'experience_range': '2-5',
-            'salary_range': {
-                'min': 800000,
-                'median': 1500000,
-                'max': 2500000
-            },
-            'percentile_25': 1000000,
-            'percentile_50': 1500000,
-            'percentile_75': 2000000,
-            'percentile_90': 2500000,
-            'currency': 'INR',
-            'last_updated': datetime.now().strftime('%Y-%m-%d')
-        }
+        
+        return base_suggestions.get(intent, base_suggestions['general'])
