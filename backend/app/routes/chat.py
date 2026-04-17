@@ -3,21 +3,15 @@ from bson import ObjectId
 from datetime import datetime, timezone
 import traceback
 import logging
+from app.services.chat_service import ChatService
 
 bp = Blueprint('chat', __name__, url_prefix='/api/chat')
 
 logger = logging.getLogger(__name__)
 
-# Simple in-memory storage for demo (replace with MongoDB when available)
-demo_responses = {
-    'job_search': "I can help you find job opportunities! While I work on connecting to our job database, here are some general tips: Update your LinkedIn profile, network with professionals in your field, and check job portals like LinkedIn Jobs, Naukri.com, and Indeed for the latest openings in Indian tech companies.",
-    'salary': "I can provide salary insights! For accurate salary information, I need access to our salary database. In the meantime, you can check platforms like Glassdoor, AmbitionBox, and LinkedIn Salary for compensation data specific to your role and location in India.",
-    'resume': "I can help with resume optimization! Focus on quantifying your achievements, using action verbs, and tailoring your resume for each job application. When our database is available, I'll be able to provide more personalized feedback.",
-    'interview': "I can assist with interview preparation! Practice common technical and behavioral questions. For technical roles, focus on data structures and algorithms. For behavioral interviews, use the STAR method (Situation, Task, Action, Result) to structure your answers.",
-    'company_research': "I can help research companies! While I work on connecting to our company database, you can research companies on platforms like Glassdoor, AmbitionBox, and LinkedIn for information about culture, benefits, and work environment.",
-    'career_growth': "I can provide career growth advice! Focus on continuous learning, networking, and taking on challenging projects. Consider online courses, certifications, and mentorship opportunities to advance your career in the Indian tech industry.",
-    'general': "I'm here to help with your career journey in India! I can assist with job search strategies, resume building, interview preparation, salary research, and career growth planning. What specific area would you like help with today?"
-}
+# Initialize ML-powered ChatService
+# Instantiated globally to avoid reloading models on every request
+chat_service_instance = None
 
 @bp.route('/message', methods=['POST'])
 def send_message():
@@ -37,42 +31,26 @@ def send_message():
         if not user_message:
             return jsonify({'error': 'Message is required'}), 400
         
-        # Simple intent detection (you can enhance this)
-        message_lower = user_message.lower()
-        intent = 'general'
+        # Instantiate service lazily if not done yet
+        global chat_service_instance
+        if chat_service_instance is None:
+            chat_service_instance = ChatService()
+            
+        # Use ML-powered ChatService for intent detection and response generation
+        response_data = chat_service_instance.process_message(
+            user_message, 
+            user_id=user_id if user_id != 'anonymous' else None
+        )
         
-        if any(word in message_lower for word in ['job', 'career', 'hiring', 'opportunities']):
-            intent = 'job_search'
-        elif any(word in message_lower for word in ['salary', 'pay', 'compensation']):
-            intent = 'salary'
-        elif any(word in message_lower for word in ['resume', 'cv']):
-            intent = 'resume'
-        elif any(word in message_lower for word in ['interview']):
-            intent = 'interview'
-        elif any(word in message_lower for word in ['company', 'organization']):
-            intent = 'company_research'
-        elif any(word in message_lower for word in ['growth', 'promotion', 'career']):
-            intent = 'career_growth'
+        # Preserve context flags for frontend compatibility
+        if 'context' not in response_data:
+            response_data['context'] = {}
+        response_data['context']['user_message'] = user_message
+        response_data['context']['database_available'] = current_app.db is not None
         
-        response_data = {
-            'message': demo_responses.get(intent, demo_responses['general']),
-            'intent': intent,
-            'context': {
-                'user_message': user_message,
-                'database_available': current_app.db is not None
-            },
-            'suggestions': [
-                "Find software engineer jobs",
-                "Salary negotiation tips", 
-                "Resume building help",
-                "Interview preparation",
-                "Company research"
-            ],
-            'data': {
-                'database_status': 'online' if current_app.db else 'offline'
-            },
-            'timestamp': datetime.now(timezone.utc).isoformat()
-        }
+        if 'data' not in response_data:
+            response_data['data'] = {}
+        response_data['data']['database_status'] = 'online' if current_app.db else 'offline'
         
         return jsonify({
             'response': response_data,
