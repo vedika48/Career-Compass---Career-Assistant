@@ -7,8 +7,25 @@ from app.ml_models.salary_predictor import SalaryPredictor, SalaryDataCollector,
 from flask import current_app
 from bson import ObjectId
 
+import nltk
+from nltk.tokenize import word_tokenize
+from nltk.stem import WordNetLemmatizer
+from nltk.corpus import stopwords
+
+try:
+    nltk.data.find('tokenizers/punkt')
+    nltk.data.find('corpora/stopwords')
+    nltk.data.find('corpora/wordnet')
+except LookupError:
+    nltk.download('punkt', quiet=True)
+    nltk.download('stopwords', quiet=True)
+    nltk.download('wordnet', quiet=True)
+
 class ChatService:
     def __init__(self):
+        self.lemmatizer = WordNetLemmatizer()
+        self.stop_words = set(stopwords.words('english'))
+        
         self.job_matcher = RealTimeJobMatcher()
         self.resume_optimizer = ResumeOptimizer()
         
@@ -114,11 +131,26 @@ class ChatService:
             
         return response_data
 
+    def _preprocess_text(self, text):
+        """Tokenize, remove stopwords, and lemmatize text for better matching"""
+        try:
+            tokens = word_tokenize(text.lower())
+            tokens = [self.lemmatizer.lemmatize(token) for token in tokens if token.isalnum() and token not in self.stop_words]
+            return " ".join(tokens)
+        except Exception as e:
+            current_app.logger.warning(f"Tokenization error, falling back to raw string: {e}")
+            return text.lower()
+
     def _detect_intent(self, message):
-        """Detect user intent from the entire message"""
+        """Detect user intent from the entire message using NLP tokenization"""
+        processed_message = self._preprocess_text(message)
+        
         for intent, patterns in self.intent_patterns.items():
             for pattern in patterns:
-                if re.search(pattern, message, re.IGNORECASE):
+                # Check against both the raw string and the lemmatized/tokenized string 
+                # so that we catch base root words (e.g. 'opportunities' -> 'opportunity') 
+                # without breaking regexes that rely on stop words.
+                if re.search(pattern, message, re.IGNORECASE) or re.search(pattern, processed_message, re.IGNORECASE):
                     return intent
         return 'general'
 
